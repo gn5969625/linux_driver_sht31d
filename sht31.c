@@ -45,6 +45,7 @@ static int i2c_sht31_read_len(struct i2c_client *client,unsigned char len,unsign
         struct i2c_msg msg[] = {
                 {client->addr,I2C_M_RD,len,result_buf}
         };
+	msg[0].scl_rate = 100*1000;
         ret = i2c_transfer(client->adapter,msg,ARRAY_SIZE(msg));
         if(ret < 0) {
                 printk("i2c_transfer read len error\n");
@@ -122,8 +123,16 @@ static int sht31_read_measurement(struct sht31 *data, bool temp) {
 	//assum delay 7ms
 	mdelay(7);
 	ret = i2c_sht31_read_len(client,sizeof(data_buf),data_buf);
+	/*
+	printk("ret = %d\n",ret);
+	for( i = 0;i < 6;i++)	{
+
+		printk("data[%d] = %d\n",i,data_buf[i]);
+	}
+	*/
 	if(temp) {
 		if(data_buf[2] == CRC8(data_buf,2)) {
+			printk("CRC8 check ok!~\n");
 			data->temperature.val_msb = data_buf[0];
 			data->temperature.val2_lsb = data_buf[1];
 		}
@@ -137,6 +146,7 @@ static int sht31_read_measurement(struct sht31 *data, bool temp) {
 	}
 	else {
 		if(data_buf[5] = CRC8(data_buf+3,2)) {
+			printk("CRC8 check ok!~\n");
 			data->humidity.val_msb = data_buf[3];
 			data->humidity.val2_lsb = data_buf[4];
 
@@ -146,7 +156,13 @@ static int sht31_read_measurement(struct sht31 *data, bool temp) {
                         data->humidity.val2_lsb = 0xff;
 			return -EINVAL;
 		}
-	}	
+	}
+	/*
+	printk("data->temperature.val_msb = %d\n",data->temperature.val_msb);
+	printk("data->temperature.val2_lsb = %d\n",data->temperature.val2_lsb);
+	printk("data->humidity.val_msb = %d\n",data->humidity.val_msb);
+	printk("data->humidity.val2_lsb = %d\n",data->humidity.val2_lsb);
+	*/
 	return 0;
 }
 static int sht31_read_raw(struct iio_dev *iio_dev,
@@ -165,14 +181,19 @@ static int sht31_read_raw(struct iio_dev *iio_dev,
 			//temp
 			if( chan->type == IIO_TEMP) {
 				tmp = (data->temperature.val_msb << 8) | data->temperature.val2_lsb;
+				//printk("tmp = %d\n",tmp);
+				*val = tmp;
 				//Degree c
-				*val = -45 + 175*(tmp/65535);
+				//*val = -45 + 175*(tmp/65535);
 				//Degree f
 				//*val2 = -49.0 + 315.0*(temp/65535.0);
 			}
 			else if ( chan->type == IIO_HUMIDITYRELATIVE) {
 				tmp = (data->humidity.val_msb << 8) | data->humidity.val2_lsb;
-				*val = 100*(tmp/65535);
+				
+				*val = tmp;
+				//printk("tmp = %d\n",tmp);
+				//*val = 100*(tmp/65535);
 				//*val2 = 0;
 			}
 			else
@@ -247,11 +268,13 @@ static int sht31_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	sht31_dev_init();
 	printk("sht31 device component found!~\n");
 	ret = sysfs_create_group(&i2c->dev.kobj, &sht31_attr_group);
-	return 0;
+	return iio_device_register(iio);
 }
 static int sht31_remove(struct i2c_client *i2c)
 {
 	sysfs_remove_group(&i2c->dev.kobj, &sht31_attr_group);
+	iio_device_unregister(i2c_get_clientdata(i2c));
+	iio_device_free(i2c_get_clientdata(i2c));
 	return 0;
 }
 
